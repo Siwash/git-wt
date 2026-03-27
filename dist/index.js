@@ -69,8 +69,11 @@ async function git(args, cwd, timeout = GIT_TIMEOUT) {
       cwd,
       encoding: "utf-8",
       timeout,
-      maxBuffer: 10 * 1024 * 1024
+      maxBuffer: 10 * 1024 * 1024,
       // 10MB
+      env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+      // 禁止 git 弹交互式认证，避免在 TUI raw mode 下挂起
+      windowsHide: true
     });
     return stdout.trim();
   } catch (error) {
@@ -85,6 +88,9 @@ function isGitRepo(dirPath) {
   return fs2.existsSync(gitPath);
 }
 async function scanGitRepos(dir) {
+  if (isGitRepo(dir)) {
+    return [{ name: path2.basename(dir), path: dir }];
+  }
   const entries = fs2.readdirSync(dir, { withFileTypes: true });
   const repos = [];
   for (const entry of entries) {
@@ -135,9 +141,10 @@ function branchToDir(branch) {
 // src/commands/create.ts
 async function createWorkspace() {
   const config = loadConfig();
+  const cwd = process.cwd();
   const sourceDir = await text({
-    message: "\u9879\u76EE\u6240\u5728\u76EE\u5F55 (\u5305\u542B\u591A\u4E2A git \u4ED3\u5E93\u7684\u6587\u4EF6\u5939):",
-    placeholder: "D:\\code\\AI-coding",
+    message: "\u9879\u76EE\u6240\u5728\u76EE\u5F55:",
+    initialValue: cwd,
     validate: (val) => {
       if (!val) return "\u8BF7\u8F93\u5165\u76EE\u5F55\u8DEF\u5F84";
     }
@@ -146,34 +153,56 @@ async function createWorkspace() {
   const resolvedSource = path3.resolve(sourceDir);
   const s = spinner();
   s.start("\u626B\u63CF git \u4ED3\u5E93...");
-  const repos = await scanGitRepos(resolvedSource);
+  let repos;
+  try {
+    repos = await scanGitRepos(resolvedSource);
+  } catch (err) {
+    s.stop(`\u626B\u63CF\u5931\u8D25: ${err.message}`);
+    return;
+  }
   if (repos.length === 0) {
     s.stop(`${resolvedSource} \u4E0B\u672A\u53D1\u73B0 git \u4ED3\u5E93`);
     return;
   }
-  s.stop(`\u53D1\u73B0 ${repos.length} \u4E2A git \u4ED3\u5E93`);
-  const selectedNames = await multiselect({
-    message: "\u9009\u62E9\u8981\u521B\u5EFA worktree \u7684\u9879\u76EE:",
-    options: repos.map((r) => ({
-      value: r.name,
-      label: r.name
-    })),
-    required: true
-  });
-  onCancel(selectedNames);
-  const selectedRepos = selectedNames.map(
-    (name) => repos.find((r) => r.name === name)
+  const isSingleRepo = repos.length === 1 && isGitRepo(resolvedSource);
+  s.stop(
+    isSingleRepo ? `\u5F53\u524D\u76EE\u5F55\u662F git \u4ED3\u5E93: ${repos[0].name}` : `\u53D1\u73B0 ${repos.length} \u4E2A git \u4ED3\u5E93`
   );
+  let selectedRepos;
+  if (isSingleRepo) {
+    selectedRepos = repos;
+  } else {
+    const selectedNames = await multiselect({
+      message: "\u9009\u62E9\u8981\u521B\u5EFA worktree \u7684\u9879\u76EE:",
+      options: repos.map((r) => ({
+        value: r.name,
+        label: r.name
+      })),
+      required: true,
+      maxItems: 15
+      // 限制渲染行数，避免大量仓库时终端渲染压力过大
+    });
+    onCancel(selectedNames);
+    selectedRepos = selectedNames.map(
+      (name) => repos.find((r) => r.name === name)
+    );
+  }
   const firstRepo = selectedRepos[0];
   const sf = spinner();
   sf.start(`\u52A0\u8F7D\u5206\u652F\u5217\u8868 (${firstRepo.name})...`);
+  let branches;
   let branchHint = "\u5DF2\u5237\u65B0\u8FDC\u7AEF\u5206\u652F";
   try {
     await fetchAll(firstRepo.path);
   } catch {
     branchHint = "\u8FDC\u7AEF\u5237\u65B0\u5931\u8D25\uFF0C\u4F7F\u7528\u672C\u5730\u7F13\u5B58";
   }
-  const branches = await getBranches(firstRepo.path);
+  try {
+    branches = await getBranches(firstRepo.path);
+  } catch (err) {
+    sf.stop(`\u83B7\u53D6\u5206\u652F\u5931\u8D25: ${err.message}`);
+    return;
+  }
   sf.stop(branchHint);
   const branchOptions = [
     ...branches.local.map((b) => ({ value: b, label: b, hint: "local" })),
@@ -199,9 +228,11 @@ async function createWorkspace() {
   } else {
     branch = selectedBranch;
   }
+  const baseDir = isSingleRepo ? path3.dirname(resolvedSource) : path3.dirname(resolvedSource);
+  const baseName = isSingleRepo ? path3.basename(resolvedSource) : path3.basename(resolvedSource);
   const defaultTarget = path3.join(
-    path3.dirname(resolvedSource),
-    `${path3.basename(resolvedSource)}--${branchToDir(branch)}`
+    baseDir,
+    `${baseName}--${branchToDir(branch)}`
   );
   const targetDir = await text({
     message: "worktree \u7EC4\u76EE\u5F55:",
@@ -225,7 +256,7 @@ async function createWorkspace() {
   if (!confirmed) return;
   const wsRepos = [];
   for (const repo of selectedRepos) {
-    const wtPath = path3.join(resolvedTarget, repo.name);
+    const wtPath = isSingleRepo ? resolvedTarget : path3.join(resolvedTarget, repo.name);
     const s2 = spinner();
     s2.start(`${repo.name} \u2192 ${branch}`);
     try {

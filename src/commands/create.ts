@@ -2,16 +2,18 @@ import path from 'node:path';
 import { select, multiselect, text, confirm, spinner, log, note } from '@clack/prompts';
 import { onCancel } from '../lib/utils';
 import { loadConfig, addWorkspace, generateId } from '../lib/config';
-import { scanGitRepos, fetchAll, getBranches, createWorktree, branchToDir } from '../lib/git';
+import { scanGitRepos, fetchAll, getBranches, createWorktree, branchToDir, isGitRepo } from '../lib/git';
 import type { WorkspaceRepo } from '../lib/types';
 
 export async function createWorkspace(): Promise<void> {
   const config = loadConfig();
 
-  // 1. 输入源目录
+  const cwd = process.cwd();
+
+  // 1. 输入源目录 — 默认当前目录
   const sourceDir = await text({
-    message: '项目所在目录 (包含多个 git 仓库的文件夹):',
-    placeholder: 'D:\\code\\AI-coding',
+    message: '项目所在目录:',
+    initialValue: cwd,
     validate: (val) => {
       if (!val) return '请输入目录路径';
     },
@@ -20,43 +22,69 @@ export async function createWorkspace(): Promise<void> {
 
   const resolvedSource = path.resolve(sourceDir as string);
 
-  // 2. 扫描 git 仓库
+  // 2. 扫描 git 仓库（支持目录本身是 git 仓库的情况）
   const s = spinner();
   s.start('扫描 git 仓库...');
-  const repos = await scanGitRepos(resolvedSource);
+  let repos: Array<{ name: string; path: string }>;
+  try {
+    repos = await scanGitRepos(resolvedSource);
+  } catch (err: unknown) {
+    s.stop(`扫描失败: ${(err as Error).message}`);
+    return;
+  }
   if (repos.length === 0) {
     s.stop(`${resolvedSource} 下未发现 git 仓库`);
     return;
   }
-  s.stop(`发现 ${repos.length} 个 git 仓库`);
 
-  // 3. 多选项目
-  const selectedNames = await multiselect({
-    message: '选择要创建 worktree 的项目:',
-    options: repos.map(r => ({
-      value: r.name,
-      label: r.name,
-    })),
-    required: true,
-  });
-  onCancel(selectedNames);
-
-  const selectedRepos = (selectedNames as string[]).map(
-    name => repos.find(r => r.name === name)!
+  const isSingleRepo = repos.length === 1 && isGitRepo(resolvedSource);
+  s.stop(isSingleRepo
+    ? `当前目录是 git 仓库: ${repos[0].name}`
+    : `发现 ${repos.length} 个 git 仓库`
   );
 
-  // 4. 只刷新第一个仓库的分支列表，避免多仓库 fetch 卡顿
+  // 3. 选择项目 — 单仓库跳过多选
+  let selectedRepos: Array<{ name: string; path: string }>;
+
+  if (isSingleRepo) {
+    selectedRepos = repos;
+  } else {
+    const selectedNames = await multiselect({
+      message: '选择要创建 worktree 的项目:',
+      options: repos.map(r => ({
+        value: r.name,
+        label: r.name,
+      })),
+      required: true,
+      maxItems: 15, // 限制渲染行数，避免大量仓库时终端渲染压力过大
+    });
+    onCancel(selectedNames);
+
+    selectedRepos = (selectedNames as string[]).map(
+      name => repos.find(r => r.name === name)!
+    );
+  }
+
+  // 4. 刷新分支列表 — 包裹在 try/catch 内，防止 unhandled rejection 触发 spinner 错误
   const firstRepo = selectedRepos[0];
   const sf = spinner();
   sf.start(`加载分支列表 (${firstRepo.name})...`);
+
+  let branches: { local: string[]; remote: string[] };
   let branchHint = '已刷新远端分支';
+
   try {
     await fetchAll(firstRepo.path);
   } catch {
     branchHint = '远端刷新失败，使用本地缓存';
   }
 
-  const branches = await getBranches(firstRepo.path);
+  try {
+    branches = await getBranches(firstRepo.path);
+  } catch (err: unknown) {
+    sf.stop(`获取分支失败: ${(err as Error).message}`);
+    return;
+  }
   sf.stop(branchHint);
 
   // 5. 选分支 — 基于第一个项目的分支列表 + 自定义输入
@@ -85,10 +113,12 @@ export async function createWorkspace(): Promise<void> {
     branch = selectedBranch as string;
   }
 
-  // 6. 目标目录 — 默认: <源目录>--<分支名>
+  // 6. 目标目录 — 默认: <源目录(或父目录)>--<分支名>
+  const baseDir = isSingleRepo ? path.dirname(resolvedSource) : path.dirname(resolvedSource);
+  const baseName = isSingleRepo ? path.basename(resolvedSource) : path.basename(resolvedSource);
   const defaultTarget = path.join(
-    path.dirname(resolvedSource),
-    `${path.basename(resolvedSource)}--${branchToDir(branch)}`
+    baseDir,
+    `${baseName}--${branchToDir(branch)}`
   );
 
   const targetDir = await text({
@@ -115,7 +145,9 @@ export async function createWorkspace(): Promise<void> {
   const wsRepos: WorkspaceRepo[] = [];
 
   for (const repo of selectedRepos) {
-    const wtPath = path.join(resolvedTarget, repo.name);
+    const wtPath = isSingleRepo
+      ? resolvedTarget // 单仓库: worktree 就是目标目录本身
+      : path.join(resolvedTarget, repo.name); // 多仓库: 每个仓库是目标目录的子目录
     const s2 = spinner();
     s2.start(`${repo.name} → ${branch}`);
 

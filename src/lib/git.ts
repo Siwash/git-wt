@@ -15,6 +15,8 @@ async function git(args: string, cwd: string, timeout = GIT_TIMEOUT): Promise<st
       encoding: 'utf-8',
       timeout,
       maxBuffer: 10 * 1024 * 1024, // 10MB
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }, // 禁止 git 弹交互式认证，避免在 TUI raw mode 下挂起
+      windowsHide: true,
     });
     return stdout.trim();
   } catch (error: unknown) {
@@ -31,8 +33,13 @@ export function isGitRepo(dirPath: string): boolean {
   return fs.existsSync(gitPath);
 }
 
-/** 扫描目录下所有直接子目录中的 git 仓库 */
+/** 扫描目录下所有直接子目录中的 git 仓库，如果目录本身是 git 仓库则直接返回 */
 export async function scanGitRepos(dir: string): Promise<Array<{ name: string; path: string }>> {
+  // 当前目录本身就是 git 仓库 → 直接返回
+  if (isGitRepo(dir)) {
+    return [{ name: path.basename(dir), path: dir }];
+  }
+
   const entries = fs.readdirSync(dir, { withFileTypes: true });
   const repos: Array<{ name: string; path: string }> = [];
 
