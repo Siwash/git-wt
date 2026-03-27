@@ -1,0 +1,51 @@
+{
+  "name": "git-wt",
+  "version": "1.0.0",
+  "description": "Batch-create git worktrees across multiple repositories with a beautiful TUI",
+  "type": "module",
+  "bin": {
+    "gwt": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "prepublishOnly": "tsup",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js"
+  },
+  "keywords": [
+    "git",
+    "worktree",
+    "monorepo",
+    "multi-repo",
+    "cli",
+    "tui",
+    "batch"
+  ],
+  "author": "Siwash",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Siwash/git-wt.git"
+  },
+  "homepage": "https://github.com/Siwash/git-wt#readme",
+  "bugs": {
+    "url": "https://github.com/Siwash/git-wt/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@clack/prompts": "^0.10.0",
+    "commander": "^13.0.0",
+    "picocolors": "^1.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.7.0"
+  }
+}
