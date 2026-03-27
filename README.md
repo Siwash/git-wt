@@ -37,7 +37,7 @@ D:\code\my-project--feature--new-ui\         # Worktree group (auto-created)
 ## Install
 
 ```bash
-npm install -g git-wt
+npm install -g @siwash/gwt
 ```
 
 Requires Node.js >= 18 and Git >= 2.20.
