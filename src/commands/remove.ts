@@ -38,17 +38,23 @@ export async function removeWorkspaceCmd(): Promise<void> {
 
   // Remove each worktree
   const s = spinner();
+  let failures = 0;
   for (const repo of ws.repos) {
     s.start(`移除 ${repo.name}...`);
     try {
-      // Check if worktree directory exists
       if (fs.existsSync(repo.worktreePath)) {
         await removeWorktree(repo.sourcePath, repo.worktreePath);
       }
       s.stop(`${pc.green('ok')} ${repo.name}`);
     } catch (err: unknown) {
+      failures++;
       s.stop(`${pc.red('fail')} ${repo.name}: ${(err as Error).message}`);
     }
+  }
+
+  if (failures > 0) {
+    log.error(`${failures} 个仓库删除失败，工作区保留在配置中，请手动清理后重试`);
+    return;
   }
 
   // Remove from config

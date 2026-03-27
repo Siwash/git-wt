@@ -109,12 +109,22 @@ export async function createWorktree(repoPath: string, targetPath: string, branc
 }
 
 export async function removeWorktree(repoPath: string, worktreePath: string): Promise<void> {
+  // 1. 尝试 git worktree remove (git >= 2.17)
   try {
     await git(`worktree remove --force "${worktreePath}"`, repoPath);
   } catch {
-    // Fallback for older git (< 2.17) without 'worktree remove'
+    // 2. Fallback: 手动删目录 + prune
     fs.rmSync(worktreePath, { recursive: true, force: true });
-    await git('worktree prune', repoPath);
+    try { await git('worktree prune', repoPath); } catch { /* ignore prune errors */ }
+  }
+
+  // 3. 确认目录已删除
+  if (fs.existsSync(worktreePath)) {
+    // 最后手段：强制删除
+    fs.rmSync(worktreePath, { recursive: true, force: true });
+    if (fs.existsSync(worktreePath)) {
+      throw new Error(`无法删除目录 ${worktreePath}`);
+    }
   }
 }
 
