@@ -1,6 +1,6 @@
 {
   "name": "@siwash/gwt",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Batch-create git worktrees across multiple repositories with a beautiful TUI",
   "type": "module",
   "bin": {

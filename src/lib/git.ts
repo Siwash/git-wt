@@ -61,8 +61,8 @@ export async function fetchAll(repoPath: string): Promise<void> {
 export async function getBranches(repoPath: string): Promise<{ local: string[]; remote: string[] }> {
   // 并行执行两个 git branch 命令
   const [localRaw, remoteRaw] = await Promise.all([
-    git('branch --format=%(refname:short)', repoPath),
-    git('branch -r --format=%(refname:short)', repoPath),
+    git('branch "--format=%(refname:short)"', repoPath),
+    git('branch -r "--format=%(refname:short)"', repoPath),
   ]);
 
   const local = localRaw ? localRaw.split('\n').map(b => b.trim()).filter(Boolean) : [];
@@ -84,7 +84,7 @@ export async function getCurrentBranch(repoPath: string): Promise<string> {
 
 export async function createWorktree(repoPath: string, targetPath: string, branch: string): Promise<void> {
   // 先查本地分支是否已存在
-  const localRaw = await git('branch --list --format=%(refname:short)', repoPath);
+  const localRaw = await git('branch --list "--format=%(refname:short)"', repoPath);
   const localBranches = localRaw ? localRaw.split('\n').map(b => b.trim()).filter(Boolean) : [];
 
   if (localBranches.includes(branch)) {
@@ -94,7 +94,7 @@ export async function createWorktree(repoPath: string, targetPath: string, branc
   }
 
   // 本地没有，查 remote
-  const remoteRaw = await git('branch -r --format=%(refname:short)', repoPath);
+  const remoteRaw = await git('branch -r "--format=%(refname:short)"', repoPath);
   const remoteBranches = remoteRaw ? remoteRaw.split('\n').map(b => b.trim()).filter(Boolean) : [];
   const remoteRef = remoteBranches.find(b => b.endsWith(`/${branch}`));
 

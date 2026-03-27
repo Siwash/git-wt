@@ -107,8 +107,8 @@ async function fetchAll(repoPath) {
 }
 async function getBranches(repoPath) {
   const [localRaw, remoteRaw] = await Promise.all([
-    git("branch --format=%(refname:short)", repoPath),
-    git("branch -r --format=%(refname:short)", repoPath)
+    git('branch "--format=%(refname:short)"', repoPath),
+    git('branch -r "--format=%(refname:short)"', repoPath)
   ]);
   const local = localRaw ? localRaw.split("\n").map((b) => b.trim()).filter(Boolean) : [];
   const remote = remoteRaw ? remoteRaw.split("\n").map((b) => b.trim()).filter((b) => b && b.includes("/") && !b.includes("HEAD")).map((b) => b.replace(/^[^/]+\//, "")) : [];
@@ -116,13 +116,13 @@ async function getBranches(repoPath) {
   return { local, remote: remoteOnly };
 }
 async function createWorktree(repoPath, targetPath, branch) {
-  const localRaw = await git("branch --list --format=%(refname:short)", repoPath);
+  const localRaw = await git('branch --list "--format=%(refname:short)"', repoPath);
   const localBranches = localRaw ? localRaw.split("\n").map((b) => b.trim()).filter(Boolean) : [];
   if (localBranches.includes(branch)) {
     await git(`worktree add -f "${targetPath}" "${branch}"`, repoPath);
     return;
   }
-  const remoteRaw = await git("branch -r --format=%(refname:short)", repoPath);
+  const remoteRaw = await git('branch -r "--format=%(refname:short)"', repoPath);
   const remoteBranches = remoteRaw ? remoteRaw.split("\n").map((b) => b.trim()).filter(Boolean) : [];
   const remoteRef = remoteBranches.find((b) => b.endsWith(`/${branch}`));
   if (remoteRef) {
@@ -395,7 +395,7 @@ async function mainMenu() {
   outro(pc3.dim("done"));
 }
 var program = new Command();
-program.name("gwt").description("Git Worktree Manager - \u591A\u4ED3\u5E93 worktree \u7BA1\u7406\u5DE5\u5177").version("1.0.0").action(mainMenu);
+program.name("gwt").description("Git Worktree Manager - \u591A\u4ED3\u5E93 worktree \u7BA1\u7406\u5DE5\u5177").version("1.1.1").action(mainMenu);
 program.command("create").description("\u521B\u5EFA\u5DE5\u4F5C\u533A - \u626B\u63CF\u76EE\u5F55\uFF0C\u6279\u91CF\u68C0\u51FA worktree").action(async () => {
   intro(pc3.cyan("\u521B\u5EFA\u5DE5\u4F5C\u533A"));
   await createWorkspace();
