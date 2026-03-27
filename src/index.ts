@@ -33,7 +33,7 @@ const program = new Command();
 program
   .name('gwt')
   .description('Git Worktree Manager - 多仓库 worktree 管理工具')
-  .version('1.1.1')
+  .version('1.1.2')
   .action(mainMenu);
 
 program

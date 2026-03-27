@@ -132,7 +132,12 @@ async function createWorktree(repoPath, targetPath, branch) {
   await git(`worktree add -b "${branch}" "${targetPath}"`, repoPath);
 }
 async function removeWorktree(repoPath, worktreePath) {
-  await git(`worktree remove "${worktreePath}" --force`, repoPath);
+  try {
+    await git(`worktree remove --force "${worktreePath}"`, repoPath);
+  } catch {
+    fs2.rmSync(worktreePath, { recursive: true, force: true });
+    await git("worktree prune", repoPath);
+  }
 }
 function branchToDir(branch) {
   return branch.replace(/\//g, "--");
@@ -395,7 +400,7 @@ async function mainMenu() {
   outro(pc3.dim("done"));
 }
 var program = new Command();
-program.name("gwt").description("Git Worktree Manager - \u591A\u4ED3\u5E93 worktree \u7BA1\u7406\u5DE5\u5177").version("1.1.1").action(mainMenu);
+program.name("gwt").description("Git Worktree Manager - \u591A\u4ED3\u5E93 worktree \u7BA1\u7406\u5DE5\u5177").version("1.1.2").action(mainMenu);
 program.command("create").description("\u521B\u5EFA\u5DE5\u4F5C\u533A - \u626B\u63CF\u76EE\u5F55\uFF0C\u6279\u91CF\u68C0\u51FA worktree").action(async () => {
   intro(pc3.cyan("\u521B\u5EFA\u5DE5\u4F5C\u533A"));
   await createWorkspace();

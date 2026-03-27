@@ -109,7 +109,13 @@ export async function createWorktree(repoPath: string, targetPath: string, branc
 }
 
 export async function removeWorktree(repoPath: string, worktreePath: string): Promise<void> {
-  await git(`worktree remove "${worktreePath}" --force`, repoPath);
+  try {
+    await git(`worktree remove --force "${worktreePath}"`, repoPath);
+  } catch {
+    // Fallback for older git (< 2.17) without 'worktree remove'
+    fs.rmSync(worktreePath, { recursive: true, force: true });
+    await git('worktree prune', repoPath);
+  }
 }
 
 /** 将分支名转为安全的目录名: feature/new-ui → feature--new-ui */
