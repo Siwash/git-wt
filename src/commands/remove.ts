@@ -36,42 +36,35 @@ export async function removeWorkspaceCmd(): Promise<void> {
   onCancel(yes);
   if (!yes) return;
 
-  // Remove each worktree
+  // 1. 从 git 注销每个 worktree
   const s = spinner();
-  let failures = 0;
   for (const repo of ws.repos) {
-    s.start(`移除 ${repo.name}...`);
+    s.start(`注销 ${repo.name}...`);
     try {
-      if (fs.existsSync(repo.worktreePath)) {
-        await removeWorktree(repo.sourcePath, repo.worktreePath);
-      }
+      await removeWorktree(repo.sourcePath, repo.worktreePath);
       s.stop(`${pc.green('ok')} ${repo.name}`);
     } catch (err: unknown) {
-      failures++;
-      s.stop(`${pc.red('fail')} ${repo.name}: ${(err as Error).message}`);
+      s.stop(`${pc.yellow('⚠')} ${repo.name}: ${(err as Error).message}`);
     }
   }
 
-  if (failures > 0) {
-    log.error(`${failures} 个仓库删除失败，工作区保留在配置中，请手动清理后重试`);
+  // 2. 强制删除整个目标目录
+  if (fs.existsSync(ws.targetDir)) {
+    try {
+      fs.rmSync(ws.targetDir, { recursive: true, force: true });
+    } catch (err: unknown) {
+      log.error(`删除目录失败: ${(err as Error).message}\n  ${ws.targetDir}`);
+      return;
+    }
+  }
+
+  if (fs.existsSync(ws.targetDir)) {
+    log.error(`无法删除目录 ${ws.targetDir}，工作区保留在配置中`);
     return;
   }
 
-  // Remove from config
+  // 3. 清除配置
   removeWorkspaceById(config, ws.id);
-
-  // Try to remove the target directory if empty
-  try {
-    if (fs.existsSync(ws.targetDir)) {
-      const entries = fs.readdirSync(ws.targetDir);
-      if (entries.length === 0) {
-        fs.rmdirSync(ws.targetDir);
-        log.info(`已清理空目录 ${ws.targetDir}`);
-      }
-    }
-  } catch {
-    // ignore cleanup errors
-  }
 
   log.success('工作区已删除');
 }

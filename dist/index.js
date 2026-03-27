@@ -135,16 +135,9 @@ async function removeWorktree(repoPath, worktreePath) {
   try {
     await git(`worktree remove --force "${worktreePath}"`, repoPath);
   } catch {
-    fs2.rmSync(worktreePath, { recursive: true, force: true });
     try {
       await git("worktree prune", repoPath);
     } catch {
-    }
-  }
-  if (fs2.existsSync(worktreePath)) {
-    fs2.rmSync(worktreePath, { recursive: true, force: true });
-    if (fs2.existsSync(worktreePath)) {
-      throw new Error(`\u65E0\u6CD5\u5220\u9664\u76EE\u5F55 ${worktreePath}`);
     }
   }
 }
@@ -357,34 +350,29 @@ async function removeWorkspaceCmd() {
   onCancel(yes);
   if (!yes) return;
   const s = spinner2();
-  let failures = 0;
   for (const repo of ws.repos) {
-    s.start(`\u79FB\u9664 ${repo.name}...`);
+    s.start(`\u6CE8\u9500 ${repo.name}...`);
     try {
-      if (fs3.existsSync(repo.worktreePath)) {
-        await removeWorktree(repo.sourcePath, repo.worktreePath);
-      }
+      await removeWorktree(repo.sourcePath, repo.worktreePath);
       s.stop(`${pc2.green("ok")} ${repo.name}`);
     } catch (err) {
-      failures++;
-      s.stop(`${pc2.red("fail")} ${repo.name}: ${err.message}`);
+      s.stop(`${pc2.yellow("\u26A0")} ${repo.name}: ${err.message}`);
     }
   }
-  if (failures > 0) {
-    log3.error(`${failures} \u4E2A\u4ED3\u5E93\u5220\u9664\u5931\u8D25\uFF0C\u5DE5\u4F5C\u533A\u4FDD\u7559\u5728\u914D\u7F6E\u4E2D\uFF0C\u8BF7\u624B\u52A8\u6E05\u7406\u540E\u91CD\u8BD5`);
+  if (fs3.existsSync(ws.targetDir)) {
+    try {
+      fs3.rmSync(ws.targetDir, { recursive: true, force: true });
+    } catch (err) {
+      log3.error(`\u5220\u9664\u76EE\u5F55\u5931\u8D25: ${err.message}
+  ${ws.targetDir}`);
+      return;
+    }
+  }
+  if (fs3.existsSync(ws.targetDir)) {
+    log3.error(`\u65E0\u6CD5\u5220\u9664\u76EE\u5F55 ${ws.targetDir}\uFF0C\u5DE5\u4F5C\u533A\u4FDD\u7559\u5728\u914D\u7F6E\u4E2D`);
     return;
   }
   removeWorkspaceById(config, ws.id);
-  try {
-    if (fs3.existsSync(ws.targetDir)) {
-      const entries = fs3.readdirSync(ws.targetDir);
-      if (entries.length === 0) {
-        fs3.rmdirSync(ws.targetDir);
-        log3.info(`\u5DF2\u6E05\u7406\u7A7A\u76EE\u5F55 ${ws.targetDir}`);
-      }
-    }
-  } catch {
-  }
   log3.success("\u5DE5\u4F5C\u533A\u5DF2\u5220\u9664");
 }
 
@@ -415,7 +403,7 @@ async function mainMenu() {
   outro(pc3.dim("done"));
 }
 var program = new Command();
-program.name("gwt").description("Git Worktree Manager - \u591A\u4ED3\u5E93 worktree \u7BA1\u7406\u5DE5\u5177").version("1.1.3").action(mainMenu);
+program.name("gwt").description("Git Worktree Manager - \u591A\u4ED3\u5E93 worktree \u7BA1\u7406\u5DE5\u5177").version("1.1.4").action(mainMenu);
 program.command("create").description("\u521B\u5EFA\u5DE5\u4F5C\u533A - \u626B\u63CF\u76EE\u5F55\uFF0C\u6279\u91CF\u68C0\u51FA worktree").action(async () => {
   intro(pc3.cyan("\u521B\u5EFA\u5DE5\u4F5C\u533A"));
   await createWorkspace();
