@@ -5,17 +5,82 @@ import { Command } from "commander";
 import { intro, select as select3, outro } from "@clack/prompts";
 
 // src/lib/utils.ts
-import { isCancel, cancel } from "@clack/prompts";
+import { isCancel, cancel, text, select, multiselect, log } from "@clack/prompts";
 function onCancel(value) {
   if (isCancel(value)) {
     cancel("\u5DF2\u53D6\u6D88");
     process.exit(0);
   }
 }
+var REFILTER = "__refilter__";
+function filterOptions(options, keyword) {
+  if (!keyword) return options;
+  const kw = keyword.toLowerCase();
+  return options.filter(
+    (o) => o.label.toLowerCase().includes(kw) || o.hint?.toLowerCase().includes(kw)
+  );
+}
+async function searchableSelect(opts) {
+  const { message, options, threshold = 10 } = opts;
+  if (options.length <= threshold) {
+    const result = await select({ message, options });
+    onCancel(result);
+    return result;
+  }
+  while (true) {
+    const keyword = await text({
+      message: `\u{1F50D} \u8F93\u5165\u5173\u952E\u5B57\u8FC7\u6EE4 (${options.length} \u9879, \u7559\u7A7A\u663E\u793A\u5168\u90E8):`,
+      placeholder: "\u4F8B\u5982 feature\u3001release \u2026",
+      defaultValue: ""
+    });
+    onCancel(keyword);
+    const kw = keyword.trim();
+    const filtered = filterOptions(options, kw);
+    if (filtered.length === 0) {
+      log.warning(`\u6CA1\u6709\u5339\u914D "${kw}" \u7684\u7ED3\u679C\uFF0C\u8BF7\u91CD\u8BD5`);
+      continue;
+    }
+    const suffix = kw ? ` (\u5339\u914D ${filtered.length}/${options.length})` : "";
+    const display = [
+      ...filtered,
+      ...kw ? [{ value: REFILTER, label: "\u21A9 \u91CD\u65B0\u8FC7\u6EE4" }] : []
+    ];
+    const result = await select({ message: message + suffix, options: display });
+    onCancel(result);
+    if (result === REFILTER) continue;
+    return result;
+  }
+}
+async function searchableMultiselect(opts) {
+  const { message, options, required = true, threshold = 10 } = opts;
+  if (options.length <= threshold) {
+    const result = await multiselect({ message, options, required });
+    onCancel(result);
+    return result;
+  }
+  while (true) {
+    const keyword = await text({
+      message: `\u{1F50D} \u8F93\u5165\u5173\u952E\u5B57\u8FC7\u6EE4 (${options.length} \u9879, \u7559\u7A7A\u663E\u793A\u5168\u90E8):`,
+      placeholder: "\u4F8B\u5982 core\u3001api \u2026",
+      defaultValue: ""
+    });
+    onCancel(keyword);
+    const kw = keyword.trim();
+    const filtered = filterOptions(options, kw);
+    if (filtered.length === 0) {
+      log.warning(`\u6CA1\u6709\u5339\u914D "${kw}" \u7684\u7ED3\u679C\uFF0C\u8BF7\u91CD\u8BD5`);
+      continue;
+    }
+    const suffix = kw ? ` (\u5339\u914D ${filtered.length}/${options.length})` : "";
+    const result = await multiselect({ message: message + suffix, options: filtered, required });
+    onCancel(result);
+    return result;
+  }
+}
 
 // src/commands/create.ts
 import path3 from "path";
-import { select, multiselect, text, confirm, spinner, log, note } from "@clack/prompts";
+import { text as text2, confirm, spinner, log as log2, note } from "@clack/prompts";
 
 // src/lib/config.ts
 import fs from "fs";
@@ -149,7 +214,7 @@ function branchToDir(branch) {
 async function createWorkspace() {
   const config = loadConfig();
   const cwd = process.cwd();
-  const sourceDir = await text({
+  const sourceDir = await text2({
     message: "\u9879\u76EE\u6240\u5728\u76EE\u5F55:",
     initialValue: cwd,
     validate: (val) => {
@@ -179,17 +244,14 @@ async function createWorkspace() {
   if (isSingleRepo) {
     selectedRepos = repos;
   } else {
-    const selectedNames = await multiselect({
+    const selectedNames = await searchableMultiselect({
       message: "\u9009\u62E9\u8981\u521B\u5EFA worktree \u7684\u9879\u76EE:",
       options: repos.map((r) => ({
         value: r.name,
         label: r.name
       })),
-      required: true,
-      maxItems: 15
-      // 限制渲染行数，避免大量仓库时终端渲染压力过大
+      required: true
     });
-    onCancel(selectedNames);
     selectedRepos = selectedNames.map(
       (name) => repos.find((r) => r.name === name)
     );
@@ -216,14 +278,13 @@ async function createWorkspace() {
     ...branches.remote.map((b) => ({ value: b, label: b, hint: "remote" })),
     { value: "__custom__", label: "+ \u8F93\u5165\u5206\u652F\u540D" }
   ];
-  const selectedBranch = await select({
+  const selectedBranch = await searchableSelect({
     message: `\u9009\u62E9\u5206\u652F (\u57FA\u4E8E ${firstRepo.name} \u7684\u5206\u652F\u5217\u8868):`,
     options: branchOptions
   });
-  onCancel(selectedBranch);
   let branch;
   if (selectedBranch === "__custom__") {
-    const custom = await text({
+    const custom = await text2({
       message: "\u5206\u652F\u540D:",
       placeholder: "feature/xxx",
       validate: (val) => {
@@ -241,7 +302,7 @@ async function createWorkspace() {
     baseDir,
     `${baseName}--${branchToDir(branch)}`
   );
-  const targetDir = await text({
+  const targetDir = await text2({
     message: "worktree \u7EC4\u76EE\u5F55:",
     initialValue: defaultTarget,
     validate: (val) => {
@@ -295,17 +356,17 @@ async function createWorkspace() {
       `\u5B8C\u6210 (${wsRepos.length}/${selectedRepos.length} \u6210\u529F)`
     );
   } else {
-    log.error("\u6240\u6709\u4ED3\u5E93\u521B\u5EFA\u5931\u8D25");
+    log2.error("\u6240\u6709\u4ED3\u5E93\u521B\u5EFA\u5931\u8D25");
   }
 }
 
 // src/commands/list.ts
-import { log as log2, note as note2 } from "@clack/prompts";
+import { log as log3, note as note2 } from "@clack/prompts";
 import pc from "picocolors";
 async function listWorkspaces() {
   const config = loadConfig();
   if (config.workspaces.length === 0) {
-    log2.info("\u6CA1\u6709\u6D3B\u8DC3\u7684\u5DE5\u4F5C\u533A\uFF0C\u4F7F\u7528 gwt create \u521B\u5EFA");
+    log3.info("\u6CA1\u6709\u6D3B\u8DC3\u7684\u5DE5\u4F5C\u533A\uFF0C\u4F7F\u7528 gwt create \u521B\u5EFA");
     return;
   }
   for (const ws of config.workspaces) {
@@ -318,17 +379,17 @@ async function listWorkspaces() {
       `${pc.yellow(ws.branch)} \u2190 ${ws.sourceDir}`
     );
   }
-  log2.info(`\u5171 ${config.workspaces.length} \u4E2A\u5DE5\u4F5C\u533A`);
+  log3.info(`\u5171 ${config.workspaces.length} \u4E2A\u5DE5\u4F5C\u533A`);
 }
 
 // src/commands/remove.ts
 import fs3 from "fs";
-import { select as select2, confirm as confirm2, spinner as spinner2, log as log3 } from "@clack/prompts";
+import { select as select2, confirm as confirm2, spinner as spinner2, log as log4 } from "@clack/prompts";
 import pc2 from "picocolors";
 async function removeWorkspaceCmd() {
   const config = loadConfig();
   if (config.workspaces.length === 0) {
-    log3.info("\u6CA1\u6709\u6D3B\u8DC3\u7684\u5DE5\u4F5C\u533A");
+    log4.info("\u6CA1\u6709\u6D3B\u8DC3\u7684\u5DE5\u4F5C\u533A");
     return;
   }
   const wsId = await select2({
@@ -341,10 +402,10 @@ async function removeWorkspaceCmd() {
   });
   onCancel(wsId);
   const ws = config.workspaces.find((w) => w.id === wsId);
-  log3.info(`\u5DE5\u4F5C\u533A: ${ws.targetDir}`);
-  log3.info(`\u5206\u652F: ${ws.branch}`);
+  log4.info(`\u5DE5\u4F5C\u533A: ${ws.targetDir}`);
+  log4.info(`\u5206\u652F: ${ws.branch}`);
   for (const repo of ws.repos) {
-    log3.message(`  ${repo.name} \u2192 ${repo.worktreePath}`);
+    log4.message(`  ${repo.name} \u2192 ${repo.worktreePath}`);
   }
   const yes = await confirm2({ message: "\u786E\u8BA4\u5220\u9664? (\u5C06\u79FB\u9664\u6240\u6709 worktree)" });
   onCancel(yes);
@@ -363,17 +424,17 @@ async function removeWorkspaceCmd() {
     try {
       fs3.rmSync(ws.targetDir, { recursive: true, force: true });
     } catch (err) {
-      log3.error(`\u5220\u9664\u76EE\u5F55\u5931\u8D25: ${err.message}
+      log4.error(`\u5220\u9664\u76EE\u5F55\u5931\u8D25: ${err.message}
   ${ws.targetDir}`);
       return;
     }
   }
   if (fs3.existsSync(ws.targetDir)) {
-    log3.error(`\u65E0\u6CD5\u5220\u9664\u76EE\u5F55 ${ws.targetDir}\uFF0C\u5DE5\u4F5C\u533A\u4FDD\u7559\u5728\u914D\u7F6E\u4E2D`);
+    log4.error(`\u65E0\u6CD5\u5220\u9664\u76EE\u5F55 ${ws.targetDir}\uFF0C\u5DE5\u4F5C\u533A\u4FDD\u7559\u5728\u914D\u7F6E\u4E2D`);
     return;
   }
   removeWorkspaceById(config, ws.id);
-  log3.success("\u5DE5\u4F5C\u533A\u5DF2\u5220\u9664");
+  log4.success("\u5DE5\u4F5C\u533A\u5DF2\u5220\u9664");
 }
 
 // src/index.ts

@@ -1,6 +1,6 @@
 import path from 'node:path';
-import { select, multiselect, text, confirm, spinner, log, note } from '@clack/prompts';
-import { onCancel } from '../lib/utils';
+import { text, confirm, spinner, log, note } from '@clack/prompts';
+import { onCancel, searchableSelect, searchableMultiselect } from '../lib/utils';
 import { loadConfig, addWorkspace, generateId } from '../lib/config';
 import { scanGitRepos, fetchAll, getBranches, createWorktree, branchToDir, isGitRepo } from '../lib/git';
 import type { WorkspaceRepo } from '../lib/types';
@@ -49,18 +49,16 @@ export async function createWorkspace(): Promise<void> {
   if (isSingleRepo) {
     selectedRepos = repos;
   } else {
-    const selectedNames = await multiselect({
+    const selectedNames = await searchableMultiselect({
       message: '选择要创建 worktree 的项目:',
       options: repos.map(r => ({
         value: r.name,
         label: r.name,
       })),
       required: true,
-      maxItems: 15, // 限制渲染行数，避免大量仓库时终端渲染压力过大
     });
-    onCancel(selectedNames);
 
-    selectedRepos = (selectedNames as string[]).map(
+    selectedRepos = selectedNames.map(
       name => repos.find(r => r.name === name)!
     );
   }
@@ -94,11 +92,10 @@ export async function createWorkspace(): Promise<void> {
     { value: '__custom__', label: '+ 输入分支名' },
   ];
 
-  const selectedBranch = await select({
+  const selectedBranch = await searchableSelect({
     message: `选择分支 (基于 ${firstRepo.name} 的分支列表):`,
     options: branchOptions,
   });
-  onCancel(selectedBranch);
 
   let branch: string;
   if (selectedBranch === '__custom__') {
@@ -110,7 +107,7 @@ export async function createWorkspace(): Promise<void> {
     onCancel(custom);
     branch = custom as string;
   } else {
-    branch = selectedBranch as string;
+    branch = selectedBranch;
   }
 
   // 6. 目标目录 — 默认: <源目录(或父目录)>--<分支名>
