@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { text, confirm, spinner, log, note } from '@clack/prompts';
-import { onCancel, searchableSelect, searchableMultiselect } from '../lib/utils';
+import { onCancel, searchSelect, searchMultiselect } from '../lib/utils';
 import { loadConfig, addWorkspace, generateId } from '../lib/config';
 import { scanGitRepos, fetchAll, getBranches, createWorktree, branchToDir, isGitRepo } from '../lib/git';
 import type { WorkspaceRepo } from '../lib/types';
@@ -49,7 +49,7 @@ export async function createWorkspace(): Promise<void> {
   if (isSingleRepo) {
     selectedRepos = repos;
   } else {
-    const selectedNames = await searchableMultiselect({
+    const selectedNames = await searchMultiselect({
       message: '选择要创建 worktree 的项目:',
       options: repos.map(r => ({
         value: r.name,
@@ -57,6 +57,7 @@ export async function createWorkspace(): Promise<void> {
       })),
       required: true,
     });
+    onCancel(selectedNames);
 
     selectedRepos = selectedNames.map(
       name => repos.find(r => r.name === name)!
@@ -92,10 +93,11 @@ export async function createWorkspace(): Promise<void> {
     { value: '__custom__', label: '+ 输入分支名' },
   ];
 
-  const selectedBranch = await searchableSelect({
+  const selectedBranch = await searchSelect({
     message: `选择分支 (基于 ${firstRepo.name} 的分支列表):`,
     options: branchOptions,
   });
+  onCancel(selectedBranch);
 
   let branch: string;
   if (selectedBranch === '__custom__') {
